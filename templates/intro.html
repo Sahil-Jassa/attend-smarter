@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Welcome{% endblock %}
+{% block meta_description %}Track attendance and predict grades with AttendSmart.{% endblock %}
+
+{% block content %}
+<div class="intro-bg">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+  <div class="dot-grid"></div>
+</div>
+
+<div class="intro-wrapper">
+  <!-- Hero text: visible by default; JS hides it, then reveals after typing -->
+  <div class="hero-text" id="heroText">
+    <h1 class="hero-line"><span id="heroTyped">Attend smart. Skip smarter.</span></h1>
+    <p class="hero-sub" id="heroSub">Track attendance. Predict grades.</p>
+  </div>
+
+  <!-- Auth card: visible by default (progressive enhancement) -->
+  <div class="glass-card auth-card" id="authCard">
+    <!-- Tab switcher -->
+    <div class="auth-tabs" role="tablist">
+      <button class="auth-tab {% if active_tab != 'signup' %}auth-tab--active{% endif %}"
+              id="tab-login" role="tab" aria-controls="panel-login"
+              aria-selected="{% if active_tab != 'signup' %}true{% else %}false{% endif %}">
+        Sign in
+      </button>
+      <button class="auth-tab {% if active_tab == 'signup' %}auth-tab--active{% endif %}"
+              id="tab-signup" role="tab" aria-controls="panel-signup"
+              aria-selected="{% if active_tab == 'signup' %}true{% else %}false{% endif %}">
+        Create account
+      </button>
+    </div>
+
+    <!-- Login panel -->
+    <div class="auth-panel {% if active_tab == 'signup' %}hidden{% endif %}" id="panel-login" role="tabpanel" aria-labelledby="tab-login">
+      <form method="post" action="{% url 'core:login' %}" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.GET.next }}">
+        {% for field in login_form %}
+        <div class="form-group">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}<p class="field-error">{{ field.errors.0 }}</p>{% endif %}
+        </div>
+        {% endfor %}
+        {% if login_form.non_field_errors %}
+        <p class="field-error">{{ login_form.non_field_errors.0 }}</p>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-full" id="btn-login">Sign in</button>
+      </form>
+    </div>
+
+    <!-- Signup panel -->
+    <div class="auth-panel {% if active_tab != 'signup' %}hidden{% endif %}" id="panel-signup" role="tabpanel" aria-labelledby="tab-signup">
+      <form method="post" action="{% url 'core:signup' %}" novalidate>
+        {% csrf_token %}
+        {% for field in signup_form %}
+        <div class="form-group">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}<p class="field-error">{{ field.errors.0 }}</p>{% endif %}
+        </div>
+        {% endfor %}
+        {% if signup_form.non_field_errors %}
+        <p class="field-error">{{ signup_form.non_field_errors.0 }}</p>
+        {% endif %}
+        <button type="submit" class="btn btn-primary btn-full" id="btn-signup">Create account</button>
+      </form>
+    </div>
+  </div><!-- /auth-card -->
+</div><!-- /intro-wrapper -->
+
+<script src="https://cdn.jsdelivr.net/npm/typed.js@2.1.0/dist/typed.umd.js"></script>
+<script>
+(function() {
+  var HERO_TEXT = "Attend smart. Skip smarter.";
+  var SUB_TEXT  = "Track attendance. Predict grades.";
+
+  var heroTyped = document.getElementById("heroTyped");
+  var heroSub   = document.getElementById("heroSub");
+  var heroText  = document.getElementById("heroText");
+  var authCard  = document.getElementById("authCard");
+
+  // prefers-reduced-motion: show everything immediately
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    heroTyped.textContent = HERO_TEXT;
+    heroSub.style.opacity = "1";
+    authCard.style.opacity = "1";
+    return;
+  }
+
+  var seen = sessionStorage.getItem("introSeen");
+
+  if (seen) {
+    // Quick version: just fade in the card
+    heroTyped.textContent = HERO_TEXT;
+    heroSub.style.opacity = "1";
+    authCard.classList.add("auth-card--visible");
+    authCard.style.opacity = "1";
+
+    // Focus first input
+    var firstInput = authCard.querySelector("input");
+    if (firstInput) firstInput.focus();
+    return;
+  }
+
+  // Full intro: hide the hero text and card, then animate
+  heroTyped.textContent = "";
+  heroSub.style.opacity = "0";
+  authCard.style.opacity = "0";
+  authCard.style.transform = "translateY(24px)";
+
+  // Allow early finish on keydown or touch
+  var finished = false;
+  function finishEarly() {
+    if (finished) return;
+    finished = true;
+    if (window._typedInstance) window._typedInstance.destroy();
+    heroTyped.textContent = HERO_TEXT;
+    heroSub.style.opacity = "1";
+    revealCard();
+  }
+  document.addEventListener("keydown", finishEarly, { once: true });
+  document.addEventListener("touchstart", finishEarly, { once: true });
+
+  function revealCard() {
+    authCard.style.transition = "opacity 0.5s ease, transform 0.5s ease";
+    authCard.style.opacity = "1";
+    authCard.style.transform = "translateY(0)";
+    authCard.classList.add("auth-card--visible");
+    sessionStorage.setItem("introSeen", "1");
+    setTimeout(function() {
+      var firstInput = authCard.querySelector("input");
+      if (firstInput) firstInput.focus();
+    }, 520);
+  }
+
+  // Start Typed.js after 500ms
+  setTimeout(function() {
+    window._typedInstance = new Typed(heroTyped, {
+      strings: [HERO_TEXT],
+      typeSpeed: 38,
+      showCursor: true,
+      cursorChar: "|",
+      onComplete: function(self) {
+        finished = true;
+        heroSub.style.transition = "opacity 0.4s ease";
+        heroSub.style.opacity = "1";
+        // Drift hero text up
+        heroText.style.transition = "transform 0.6s ease";
+        heroText.style.transform = "translateY(-18px)";
+        setTimeout(revealCard, 800);
+      }
+    });
+  }, 500);
+})();
+</script>
+{% endblock %}

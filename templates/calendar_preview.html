@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}Preview & Confirm Calendar{% endblock %}
+
+{% block content %}
+<div class="preview-page-wrap" style="max-width: 1050px; margin: 0 auto; display: flex; flex-direction: column; gap: 2rem;">
+
+  <!-- Header -->
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+    <div>
+      <h1 class="page-title">Semester Schedule Preview</h1>
+      <p class="page-sub">
+        {{ start_date|date:"d M Y" }} &mdash; {{ last_working_day|date:"d M Y" }} &bull;
+        Mode: <strong style="color: var(--text);">{{ mode|title }}</strong> &bull;
+        Weekends: <strong style="color: var(--text);">{% if weekends_off %}Off (Skipped){% else %}Counted{% endif %}</strong>
+      </p>
+    </div>
+    <div style="display: flex; gap: 0.75rem;">
+      <a href="{% url 'core:calendar_setup' %}" class="btn btn-ghost">Back to Dates</a>
+    </div>
+  </div>
+
+  <!-- Summary Statistics Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+    <div class="glass-card" style="text-align: center; border-left: 3px solid var(--primary);">
+      <div style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Total Working Days</div>
+      <div style="font-size: 2.2rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--accent);">{{ total_working_days }}</div>
+      <div style="font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem;">Instructional Days</div>
+    </div>
+
+    <div class="glass-card" style="text-align: center; border-left: 3px solid var(--warning);">
+      <div style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Holidays Skipped</div>
+      <div style="font-size: 2.2rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--warning);">{{ total_holidays_skipped }}</div>
+      <div style="font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem;">National & College Breaks</div>
+    </div>
+
+    <div class="glass-card" style="text-align: center; border-left: 3px solid var(--muted);">
+      <div style="font-size: 0.85rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem;">Total Calendar Span</div>
+      <div style="font-size: 2.2rem; font-weight: 700; font-family: 'Space Grotesk', sans-serif; color: var(--text);">{{ total_calendar_days }}</div>
+      <div style="font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem;">Days in Semester</div>
+    </div>
+  </div>
+
+  <!-- Month by Month Breakdown -->
+  <div class="glass-card">
+    <h2 style="font-size: 1.2rem; margin-bottom: 1rem; color: var(--text); display: flex; align-items: center; gap: 0.5rem;">
+      <span>📆</span> Month-by-Month Breakdown
+    </h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+      {% for m in months_list %}
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem;">
+        <div style="font-weight: 600; color: var(--text); margin-bottom: 0.5rem; font-size: 1.05rem;">{{ m.month }}</div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.25rem;">
+          <span style="color: var(--muted);">Working Days:</span>
+          <strong style="color: var(--accent);">{{ m.working }}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 0.25rem;">
+          <span style="color: var(--muted);">Holidays:</span>
+          <strong style="color: var(--warning);">{{ m.holidays }}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
+          <span style="color: var(--muted);">Weekend Days:</span>
+          <strong style="color: var(--muted);">{{ m.weekends }}</strong>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Save Form containing confirmed tables -->
+  <form method="post" action="{% url 'core:calendar_save' %}" id="calendar-save-form">
+    {% csrf_token %}
+    <input type="hidden" name="confirmed_subjects" id="input_confirmed_subjects">
+    <input type="hidden" name="confirmed_holidays" id="input_confirmed_holidays">
+
+    <!-- Editable Timetable Grid -->
+    <div class="glass-card" style="margin-bottom: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+          <h2 style="font-size: 1.25rem; color: var(--text);">📚 Timetable Slots</h2>
+          <p class="field-hint">Specify weekly slots for each subject. Labs can be 2 or 3 periods.</p>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btn-add-subject-row" style="font-size: 0.85rem; border: 1px dashed var(--primary); color: var(--primary);">
+          + Add Subject Slot
+        </button>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="grid-table" id="timetable-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border); color: var(--muted); font-size: 0.85rem;">
+              <th style="padding: 0.75rem 0.5rem; width: 40%;">Subject Name</th>
+              <th style="padding: 0.75rem 0.5rem; width: 30%;">
+                {% if mode == 'day_order' %}Day Order (1-5){% else %}Day of Week{% endif %}
+              </th>
+              <th style="padding: 0.75rem 0.5rem; width: 20%;">Periods / Slot</th>
+              <th style="padding: 0.75rem 0.5rem; width: 10%; text-align: center;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="timetable-tbody">
+            {% if subjects %}
+              {% for s in subjects %}
+                {% if s.slots %}
+                  {% for slot in s.slots %}
+                  <tr class="tt-row" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 0.5rem;">
+                      <input type="text" class="form-input tt-name" value="{{ s.name }}" placeholder="e.g. Data Structures" style="width: 100%;" required>
+                    </td>
+                    <td style="padding: 0.5rem;">
+                      {% if mode == 'day_order' %}
+                        <input type="number" class="form-input tt-day" min="1" max="10" value="{{ slot.weekday_or_day_order|default:1 }}" style="width: 100%;" required>
+                      {% else %}
+                        <select class="form-input tt-day" style="width: 100%;">
+                          {% for val, label in weekday_choices %}
+                          <option value="{{ val }}" {% if slot.weekday_or_day_order == val %}selected{% endif %}>{{ label }}</option>
+                          {% endfor %}
+                        </select>
+                      {% endif %}
+                    </td>
+                    <td style="padding: 0.5rem;">
+                      <input type="number" class="form-input tt-periods" min="1" max="6" value="{{ slot.periods|default:1 }}" style="width: 100%;" required>
+                    </td>
+                    <td style="padding: 0.5rem; text-align: center;">
+                      <button type="button" class="btn-delete-row" title="Delete slot" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr class="tt-row" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <td style="padding: 0.5rem;">
+                      <input type="text" class="form-input tt-name" value="{{ s.name }}" placeholder="Subject Name" style="width: 100%;" required>
+                    </td>
+                    <td style="padding: 0.5rem;">
+                      {% if mode == 'day_order' %}
+                        <input type="number" class="form-input tt-day" min="1" max="10" value="1" style="width: 100%;" required>
+                      {% else %}
+                        <select class="form-input tt-day" style="width: 100%;">
+                          {% for val, label in weekday_choices %}
+                          <option value="{{ val }}">{{ label }}</option>
+                          {% endfor %}
+                        </select>
+                      {% endif %}
+                    </td>
+                    <td style="padding: 0.5rem;">
+                      <input type="number" class="form-input tt-periods" min="1" max="6" value="1" style="width: 100%;" required>
+                    </td>
+                    <td style="padding: 0.5rem; text-align: center;">
+                      <button type="button" class="btn-delete-row" title="Delete slot" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+                    </td>
+                  </tr>
+                {% endif %}
+              {% endfor %}
+            {% else %}
+              <tr class="tt-row" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 0.5rem;">
+                  <input type="text" class="form-input tt-name" placeholder="e.g. Mathematics" style="width: 100%;" required>
+                </td>
+                <td style="padding: 0.5rem;">
+                  {% if mode == 'day_order' %}
+                    <input type="number" class="form-input tt-day" min="1" max="10" value="1" style="width: 100%;" required>
+                  {% else %}
+                    <select class="form-input tt-day" style="width: 100%;">
+                      {% for val, label in weekday_choices %}
+                      <option value="{{ val }}">{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  {% endif %}
+                </td>
+                <td style="padding: 0.5rem;">
+                  <input type="number" class="form-input tt-periods" min="1" max="6" value="1" style="width: 100%;" required>
+                </td>
+                <td style="padding: 0.5rem; text-align: center;">
+                  <button type="button" class="btn-delete-row" title="Delete slot" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Editable Holiday List -->
+    <div class="glass-card" style="margin-bottom: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div>
+          <h2 style="font-size: 1.25rem; color: var(--text);">🏖️ Academic Holidays</h2>
+          <p class="field-hint">Holidays that fall on weekends are counted once and never subtracted twice.</p>
+        </div>
+        <button type="button" class="btn btn-ghost" id="btn-add-holiday-row" style="font-size: 0.85rem; border: 1px dashed var(--warning); color: var(--warning);">
+          + Add Holiday Date
+        </button>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="grid-table" id="holiday-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border); color: var(--muted); font-size: 0.85rem;">
+              <th style="padding: 0.75rem 0.5rem; width: 35%;">Date (or Start Date)</th>
+              <th style="padding: 0.75rem 0.5rem; width: 25%;">End Date (Optional Range)</th>
+              <th style="padding: 0.75rem 0.5rem; width: 30%;">Holiday Label</th>
+              <th style="padding: 0.75rem 0.5rem; width: 10%; text-align: center;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="holiday-tbody">
+            {% if holidays %}
+              {% for h in holidays %}
+              <tr class="hol-row" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 0.5rem;">
+                  <input type="date" class="form-input hol-date" value="{% if h.date %}{{ h.date }}{% elif h.start %}{{ h.start }}{% endif %}" style="width: 100%;" required>
+                </td>
+                <td style="padding: 0.5rem;">
+                  <input type="date" class="form-input hol-end" value="{% if h.end %}{{ h.end }}{% endif %}" style="width: 100%;">
+                </td>
+                <td style="padding: 0.5rem;">
+                  <input type="text" class="form-input hol-label" value="{% if h.label %}{{ h.label }}{% else %}Holiday{% endif %}" placeholder="Holiday Name" style="width: 100%;" required>
+                </td>
+                <td style="padding: 0.5rem; text-align: center;">
+                  <button type="button" class="btn-delete-row" title="Delete holiday" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr class="hol-row" style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 0.5rem;">
+                  <input type="date" class="form-input hol-date" value="{{ start_date|date:'Y-m-d' }}" style="width: 100%;" required>
+                </td>
+                <td style="padding: 0.5rem;">
+                  <input type="date" class="form-input hol-end" style="width: 100%;">
+                </td>
+                <td style="padding: 0.5rem;">
+                  <input type="text" class="form-input hol-label" value="Holiday" style="width: 100%;" required>
+                </td>
+                <td style="padding: 0.5rem; text-align: center;">
+                  <button type="button" class="btn-delete-row" title="Delete holiday" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Confirm and Save Button -->
+    <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem; margin-bottom: 3rem;">
+      <a href="{% url 'core:calendar_setup' %}" class="btn btn-ghost">Cancel</a>
+      <button type="submit" class="btn btn-primary" id="btn-confirm-save" style="font-size: 1.05rem; padding: 0.75rem 2rem;">
+        Confirm & Save Calendar
+      </button>
+    </div>
+  </form>
+</div>
+
+<!-- Dynamic Row Addition & Submission Script -->
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const isDayOrder = "{{ mode }}" === "day_order";
+  const weekdayOptions = `
+    {% for val, label in weekday_choices %}
+    <option value="{{ val }}">{{ label }}</option>
+    {% endfor %}
+  `;
+
+  // Delete row handler (event delegation)
+  document.addEventListener("click", function(e) {
+    if (e.target && e.target.classList.contains("btn-delete-row")) {
+      const row = e.target.closest("tr");
+      if (row) {
+        row.remove();
+      }
+    }
+  });
+
+  // Add timetable row
+  document.getElementById("btn-add-subject-row")?.addEventListener("click", function() {
+    const tbody = document.getElementById("timetable-tbody");
+    const tr = document.createElement("tr");
+    tr.className = "tt-row";
+    tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+
+    const dayInputHtml = isDayOrder
+      ? '<input type="number" class="form-input tt-day" min="1" max="10" value="1" style="width: 100%;" required>'
+      : `<select class="form-input tt-day" style="width: 100%;">${weekdayOptions}</select>`;
+
+    tr.innerHTML = `
+      <td style="padding: 0.5rem;">
+        <input type="text" class="form-input tt-name" placeholder="Subject Name" style="width: 100%;" required>
+      </td>
+      <td style="padding: 0.5rem;">${dayInputHtml}</td>
+      <td style="padding: 0.5rem;">
+        <input type="number" class="form-input tt-periods" min="1" max="6" value="1" style="width: 100%;" required>
+      </td>
+      <td style="padding: 0.5rem; text-align: center;">
+        <button type="button" class="btn-delete-row" title="Delete slot" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Add holiday row
+  document.getElementById("btn-add-holiday-row")?.addEventListener("click", function() {
+    const tbody = document.getElementById("holiday-tbody");
+    const tr = document.createElement("tr");
+    tr.className = "hol-row";
+    tr.style.borderBottom = "1px solid rgba(255,255,255,0.05)";
+    tr.innerHTML = `
+      <td style="padding: 0.5rem;">
+        <input type="date" class="form-input hol-date" style="width: 100%;" required>
+      </td>
+      <td style="padding: 0.5rem;">
+        <input type="date" class="form-input hol-end" style="width: 100%;">
+      </td>
+      <td style="padding: 0.5rem;">
+        <input type="text" class="form-input hol-label" value="Holiday" style="width: 100%;" required>
+      </td>
+      <td style="padding: 0.5rem; text-align: center;">
+        <button type="button" class="btn-delete-row" title="Delete holiday" style="background: none; border: none; color: var(--detention); cursor: pointer; font-size: 1.1rem;">&times;</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  // Before saving, package table rows into JSON
+  document.getElementById("calendar-save-form")?.addEventListener("submit", function(e) {
+    // 1. Package Timetable Slots grouped by Subject Name
+    const ttRows = document.querySelectorAll("#timetable-tbody .tt-row");
+    const subjMap = {};
+
+    ttRows.forEach(row => {
+      const name = row.querySelector(".tt-name")?.value.trim();
+      const day = parseInt(row.querySelector(".tt-day")?.value || "0", 10);
+      const periods = parseInt(row.querySelector(".tt-periods")?.value || "1", 10);
+
+      if (name) {
+        if (!subjMap[name]) {
+          subjMap[name] = { name: name, slots: [] };
+        }
+        subjMap[name].slots.push({
+          weekday_or_day_order: day,
+          periods: periods
+        });
+      }
+    });
+
+    const confirmedSubjects = Object.values(subjMap);
+    document.getElementById("input_confirmed_subjects").value = JSON.stringify(confirmedSubjects);
+
+    // 2. Package Holidays
+    const holRows = document.querySelectorAll("#holiday-tbody .hol-row");
+    const confirmedHolidays = [];
+
+    holRows.forEach(row => {
+      const dateVal = row.querySelector(".hol-date")?.value;
+      const endVal = row.querySelector(".hol-end")?.value;
+      const label = row.querySelector(".hol-label")?.value.trim() || "Holiday";
+
+      if (dateVal) {
+        if (endVal && endVal >= dateVal) {
+          confirmedHolidays.push({ start: dateVal, end: endVal, label: label });
+        } else {
+          confirmedHolidays.push({ date: dateVal, label: label });
+        }
+      }
+    });
+
+    document.getElementById("input_confirmed_holidays").value = JSON.stringify(confirmedHolidays);
+  });
+});
+</script>
+{% endblock %}

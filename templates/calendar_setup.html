@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Calendar & Timetable Setup{% endblock %}
+
+{% block content %}
+<div class="form-page-wrap" style="max-width: 800px; margin: 0 auto;">
+  <div class="glass-card form-card">
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.5rem;">
+      <div>
+        <h1 class="form-card__title" style="margin-bottom: 0.25rem;">Academic Calendar & Timetable Setup</h1>
+        <p class="page-sub">Configure your semester dates and optionally upload your timetable and holiday list.</p>
+      </div>
+      {% if existing_cal %}
+      <span class="badge" style="background: rgba(45,212,191,0.15); color: var(--accent); border: 1px solid rgba(45,212,191,0.3); padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.85rem;">
+        Calendar Active
+      </span>
+      {% endif %}
+    </div>
+
+    <form method="post" enctype="multipart/form-data" novalidate id="calendar-setup-form">
+      {% csrf_token %}
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+        <div class="form-group">
+          <label for="{{ form.start_date.id_for_label }}">{{ form.start_date.label }}</label>
+          {{ form.start_date }}
+          {% if form.start_date.help_text %}<p class="field-hint">{{ form.start_date.help_text }}</p>{% endif %}
+          {% if form.start_date.errors %}<p class="field-error">{{ form.start_date.errors.0 }}</p>{% endif %}
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.last_working_day.id_for_label }}">{{ form.last_working_day.label }}</label>
+          {{ form.last_working_day }}
+          {% if form.last_working_day.help_text %}<p class="field-hint">{{ form.last_working_day.help_text }}</p>{% endif %}
+          {% if form.last_working_day.errors %}<p class="field-error">{{ form.last_working_day.errors.0 }}</p>{% endif %}
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+        <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
+          <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; user-select: none;">
+            {{ form.weekends_off }}
+            <span style="font-weight: 500;">Skip Saturdays & Sundays</span>
+          </label>
+          <p class="field-hint" style="margin-left: 1.75rem;">Weekend days will not be counted as working days unless specifically overridden.</p>
+        </div>
+
+        <div class="form-group">
+          <label for="{{ form.mode.id_for_label }}">{{ form.mode.label }}</label>
+          {{ form.mode }}
+          <p class="field-hint">Choose whether classes follow standard Mon-Sun weekdays or Day Orders (Order 1 to 5).</p>
+        </div>
+      </div>
+
+      <div style="border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 1.5rem;">
+        <h3 style="font-size: 1.15rem; margin-bottom: 0.5rem; color: var(--text);">Smart Photo Uploads (Optional)</h3>
+        <p class="field-hint" style="margin-bottom: 1.25rem;">
+          Upload a clear photo or PDF of your timetable or holiday circular. Our vision AI extracts the schedule directly. If no photos are uploaded or extraction fails, you can fill in details manually on the next screen.
+        </p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+          <div class="form-group" style="background: rgba(255,255,255,0.02); padding: 1rem; border-radius: var(--radius-sm); border: 1px dashed var(--border);">
+            <label for="{{ form.timetable_file.id_for_label }}" style="font-weight: 600; display: block; margin-bottom: 0.5rem;">
+              📅 Timetable Photo / PDF
+            </label>
+            {{ form.timetable_file }}
+            <p class="field-hint" style="margin-top: 0.5rem;">Formats: JPG, PNG, PDF. Max 5 MB.</p>
+            {% if form.timetable_file.errors %}<p class="field-error">{{ form.timetable_file.errors.0 }}</p>{% endif %}
+          </div>
+
+          <div class="form-group" style="background: rgba(255,255,255,0.02); padding: 1rem; border-radius: var(--radius-sm); border: 1px dashed var(--border);">
+            <label for="{{ form.holiday_file.id_for_label }}" style="font-weight: 600; display: block; margin-bottom: 0.5rem;">
+              🏖️ Holiday Calendar Photo / PDF
+            </label>
+            {{ form.holiday_file }}
+            <p class="field-hint" style="margin-top: 0.5rem;">National holidays (Republic Day, Independence Day, Gandhi Jayanti) are automatically added!</p>
+            {% if form.holiday_file.errors %}<p class="field-error">{{ form.holiday_file.errors.0 }}</p>{% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if form.non_field_errors %}
+      <div style="margin-bottom: 1rem;">
+        {% for error in form.non_field_errors %}
+        <p class="field-error">{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="form-actions" style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+        <a href="{% url 'core:dashboard' %}" class="btn btn-ghost">Cancel</a>
+        <button type="submit" class="btn btn-primary" id="btn-proceed-preview">
+          Continue to Preview &rarr;
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

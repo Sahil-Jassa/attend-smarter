@@ -1,0 +1,627 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ subject.name }}{% endblock %}
+
+{% block content %}
+<div class="detail-header">
+  <a href="{% url 'core:dashboard' %}" class="back-link">&larr; Dashboard</a>
+  <div class="detail-header__actions">
+    <a href="{% url 'core:subject_edit' subject.pk %}" class="btn btn-ghost btn-sm">Edit</a>
+    <form method="post" action="{% url 'core:subject_delete' subject.pk %}" class="inline-form">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-danger btn-sm"
+              onclick="return confirm('Delete {{ subject.name }}?')">Delete</button>
+    </form>
+  </div>
+</div>
+
+<h1 class="page-title">{{ subject.name }}</h1>
+
+<!-- Fail banner -->
+{% if grade_table and grade_table.fail_warning %}
+<div class="fail-banner" role="alert">
+  <span class="fail-banner__icon" aria-hidden="true">&#9888;</span>
+  <strong>Fail risk:</strong> Even a perfect score (75) on the external paper cannot reach a pass
+  with your current internal marks ({{ subject.internal_marks }}/60).
+</div>
+{% endif %}
+
+<div class="detail-grid">
+  <!-- LEFT: Attendance -->
+  <section class="glass-card detail-section" aria-label="Attendance summary">
+    <h2 class="section-title">Attendance</h2>
+
+    <div class="big-pct-row">
+      <span class="big-pct js-pct" data-target="{{ att.current_pct|default:'0' }}">
+        {% if att.current_pct is not None %}{{ att.current_pct|floatformat:1 }}%{% else %}No classes yet{% endif %}
+      </span>
+      <span class="status-badge status-badge--{{ att.status }}" role="status">
+        {% if att.status == 'safe' %}&#10003; Safe
+        {% elif att.status == 'warning' %}&#9888; Warning
+        {% elif att.status == 'detention_zone' %}&#10007; Detention Zone
+        {% else %}No classes yet{% endif %}
+      </span>
+    </div>
+
+    <!-- Linear progress bar -->
+    <div class="progress-bar-wrap progress-bar-wrap--lg">
+      <div class="progress-bar">
+        <div class="progress-bar__fill js-fill" style="width:0%"
+             data-target="{{ att.current_pct|default:'0'|floatformat:0 }}"></div>
+      </div>
+      <div class="progress-bar__marker" style="left:{{ active_thr }}%"></div>
+      <span class="progress-bar__marker-label" style="left:{{ active_thr }}%">{{ active_thr }}%</span>
+    </div>
+
+    <div class="att-stats-grid">
+      <div class="stat-box">
+        <span class="stat-box__val">{{ att.must }}</span>
+        <span class="stat-box__lbl">Must attend</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-box__val">{{ att.skips }}</span>
+        <span class="stat-box__lbl">Can skip</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-box__val">{{ att.r }}</span>
+        <span class="stat-box__lbl">Remaining</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-box__val">{{ att.req_total }}</span>
+        <span class="stat-box__lbl">Need total</span>
+      </div>
+    </div>
+
+    <!-- Safe skip plan for this subject -->
+    <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem 1rem; margin-top: 1.25rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.4rem;">
+        <span style="font-weight: 600; font-size: 0.9rem; color: var(--text); display: flex; align-items: center; gap: 0.4rem;">
+          <span>🏖️</span> Safe Skip Plan
+        </span>
+        <span style="font-size: 0.75rem; color: var(--accent); background: rgba(45,212,191,0.1); padding: 0.15rem 0.5rem; border-radius: 999px;">
+          {{ active_thr }}% Threshold
+        </span>
+      </div>
+
+      {% if not skip_plan or not skip_plan.feasible_days %}
+      <p style="color: var(--muted); font-size: 0.85rem; margin: 0;">
+        No safe skip days feasible at {{ active_thr }}% threshold. All classes for {{ subject.name }} require attendance.
+      </p>
+      {% else %}
+        {% if subject_plan_days %}
+        <p style="color: var(--text); font-size: 0.85rem; margin-bottom: 0.5rem;">
+          Semester plan uses <strong>{{ subject_skips_used }}</strong> of your <strong>{{ subject_initial_budget }}</strong> available skips (<strong>{{ subject_budget_left }}</strong> in reserve):
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem;">
+          {% for d in subject_plan_days %}
+          <span class="badge" style="background: rgba(45,212,191,0.1); color: var(--accent); border: 1px solid rgba(45,212,191,0.25); font-size: 0.78rem; padding: 0.25rem 0.55rem; border-radius: var(--radius-sm);">
+            📅 {{ d.date|date:"D, d M" }} &bull; {{ d.periods }} period{{ d.periods|pluralize }} ({{ d.label }})
+          </span>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p style="color: var(--muted); font-size: 0.85rem; margin-bottom: 0.5rem;">
+          No skips for {{ subject.name }} are scheduled in the primary plan ({{ subject_initial_budget }} skips remain available in reserve).
+        </p>
+        {% endif %}
+
+        <!-- Expander with full plan & budget left per subject -->
+        <details style="margin-top: 0.5rem; font-size: 0.85rem;">
+          <summary style="cursor: pointer; color: var(--primary); font-weight: 500; user-select: none;">
+            Show full plan & all subject budgets left
+          </summary>
+          <div style="margin-top: 0.75rem; border-top: 1px solid var(--border); padding-top: 0.5rem;">
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem;">
+              {% for row in skip_plan.subject_budget_rows %}
+              <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.3rem 0.6rem; font-size: 0.75rem;">
+                <strong>{{ row.name }}:</strong> <span style="color: var(--accent);">{{ row.left_budget }} left</span>
+                <span style="color: var(--muted);">({{ row.used_budget }}/{{ row.initial_budget }} used)</span>
+              </div>
+              {% endfor %}
+            </div>
+            {% if skip_plan.plan %}
+            <ul style="margin: 0; padding-left: 1.25rem; color: var(--muted); font-size: 0.8rem; display: flex; flex-direction: column; gap: 0.25rem;">
+              {% for pd in skip_plan.plan %}
+              <li>
+                <strong style="color: var(--text);">{{ pd.date|date:"D, d M Y" }}</strong> ({{ pd.label }}): {{ pd.total_periods }} periods skipped
+              </li>
+              {% endfor %}
+            </ul>
+            {% endif %}
+          </div>
+        </details>
+      {% endif %}
+    </div>
+
+    <!-- Quick update form -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+      <h3 class="subsection-title" style="margin-bottom: 0;">Update attendance</h3>
+      {% if counts %}
+      <button type="button" id="btn-toggle-input-mode" class="btn btn-ghost" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; border: 1px solid var(--border);">
+        Toggle Manual Mode
+      </button>
+      {% endif %}
+    </div>
+
+    {% if counts %}
+    <div style="background: rgba(45,212,191,0.08); border: 1px solid rgba(45,212,191,0.25); border-radius: var(--radius-sm); padding: 0.6rem 0.85rem; margin-bottom: 1rem; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+      <div>
+        <span style="color: var(--accent); font-weight: 600;">Calendar Auto-Count:</span>
+        <span style="color: var(--text);"><strong>{{ counts.held }}</strong> held classes to date</span>
+        <span style="color: var(--muted); margin-left: 0.25rem;">(of {{ counts.total }} total)</span>
+      </div>
+      {% if subject.held_adjustment %}
+      <span style="color: var(--warning); font-size: 0.8rem;">
+        Adjustment: {% if subject.held_adjustment > 0 %}+{% endif %}{{ subject.held_adjustment }}
+      </span>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'core:snapshot_add' subject.pk %}" novalidate id="snapshot-update-form">
+      {% csrf_token %}
+
+      <!-- Auto Mode (Absences / Attended) -->
+      <div id="auto-attendance-container" {% if not counts %}style="display:none;"{% endif %}>
+        <div style="display: flex; gap: 1rem; margin-bottom: 0.75rem;">
+          <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+            <input type="radio" name="entry_mode" value="attended" checked id="radio-mode-attended">
+            <span>Classes Attended</span>
+          </label>
+          <label style="font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+            <input type="radio" name="entry_mode" value="absences" id="radio-mode-absences">
+            <span>Absences (Missed)</span>
+          </label>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem;">
+          <div class="stepper-group" id="group-attended-input">
+            <label for="id_attended_auto">Attended Classes</label>
+            <input type="number" name="attended" id="id_attended_auto" min="0" max="{{ counts.held|default:H }}" value="{{ A }}" class="form-input" style="width: 100%;">
+          </div>
+
+          <div class="stepper-group" id="group-absences-input" style="display: none;">
+            <label for="id_absences">Missed Classes</label>
+            <input type="number" name="absences" id="id_absences" min="0" max="{{ counts.held|default:H }}" value="0" class="form-input" style="width: 100%;" placeholder="e.g. 2">
+          </div>
+
+          <div class="stepper-group">
+            <label for="id_held_adjustment">Cancelled / Extra</label>
+            <input type="number" name="held_adjustment" id="id_held_adjustment" value="{{ subject.held_adjustment }}" class="form-input" style="width: 100%;" placeholder="0" title="-1 for cancelled class, +1 for extra class">
+          </div>
+        </div>
+      </div>
+
+      <!-- Fallback Manual Mode (Held + Attended) -->
+      <div id="manual-attendance-container" {% if counts %}style="display:none;"{% endif %}>
+        <input type="hidden" name="manual_mode_flag" id="manual_mode_flag" value="{% if not counts %}1{% else %}0{% endif %}">
+        <div class="stepper-row">
+          <div class="stepper-group">
+            <label for="id_held">Held (H)</label>
+            <div class="stepper">
+              <button type="button" class="stepper__btn stepper__btn--dec" data-target="held">&#8722;</button>
+              <input type="number" name="held" id="id_held" min="0" value="{{ H }}">
+              <button type="button" class="stepper__btn stepper__btn--inc" data-target="held">+</button>
+            </div>
+          </div>
+
+          <div class="stepper-group">
+            <label for="id_attended">Attended (A)</label>
+            <div class="stepper">
+              <button type="button" class="stepper__btn stepper__btn--dec" data-target="attended">&#8722;</button>
+              <input type="number" name="attended_manual" id="id_attended_manual" min="0" value="{{ A }}">
+              <button type="button" class="stepper__btn stepper__btn--inc" data-target="attended">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary mt-1" id="btn-update-attendance">Record Attendance</button>
+    </form>
+  </section>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", function() {
+    const autoContainer = document.getElementById("auto-attendance-container");
+    const manualContainer = document.getElementById("manual-attendance-container");
+    const btnToggle = document.getElementById("btn-toggle-input-mode");
+    const radioAttended = document.getElementById("radio-mode-attended");
+    const radioAbsences = document.getElementById("radio-mode-absences");
+    const groupAttended = document.getElementById("group-attended-input");
+    const groupAbsences = document.getElementById("group-absences-input");
+
+    if (btnToggle) {
+      btnToggle.addEventListener("click", function() {
+        if (manualContainer.style.display === "none") {
+          manualContainer.style.display = "block";
+          autoContainer.style.display = "none";
+          btnToggle.textContent = "Toggle Auto Mode";
+          // Sync manual attended from auto
+          const autoVal = document.getElementById("id_attended_auto")?.value;
+          const manInput = document.getElementById("id_attended_manual");
+          if (manInput && autoVal !== undefined) manInput.value = autoVal;
+        } else {
+          manualContainer.style.display = "none";
+          autoContainer.style.display = "block";
+          btnToggle.textContent = "Toggle Manual Mode";
+        }
+      });
+    }
+
+    if (radioAttended && radioAbsences) {
+      radioAttended.addEventListener("change", function() {
+        if (this.checked) {
+          groupAttended.style.display = "block";
+          groupAbsences.style.display = "none";
+        }
+      });
+      radioAbsences.addEventListener("change", function() {
+        if (this.checked) {
+          groupAttended.style.display = "none";
+          groupAbsences.style.display = "block";
+        }
+      });
+    }
+
+    // Sync manual attended before submit if in manual mode
+    document.getElementById("snapshot-update-form")?.addEventListener("submit", function() {
+      if (manualContainer && manualContainer.style.display !== "none") {
+        const manVal = document.getElementById("id_attended_manual")?.value;
+        const autoInput = document.getElementById("id_attended_auto");
+        if (autoInput && manVal !== undefined) autoInput.value = manVal;
+        // set entry_mode to manual
+        const hiddenEntryMode = document.createElement("input");
+        hiddenEntryMode.type = "hidden";
+        hiddenEntryMode.name = "entry_mode";
+        hiddenEntryMode.value = "manual";
+        this.appendChild(hiddenEntryMode);
+      }
+    });
+  });
+  </script>
+
+  <!-- RIGHT: What-if slider -->
+  <section class="glass-card detail-section" aria-label="What-if slider">
+    <h2 class="section-title">What-if: skip more classes?</h2>
+    <input type="range" id="whatIfSlider" class="slider" min="0" max="{{ att.r }}" value="0"
+           aria-label="Extra skips" aria-valuemin="0" aria-valuemax="{{ att.r }}" aria-valuenow="0">
+    <div class="whatif-display">
+      <div class="whatif-stat">
+        <span class="whatif-stat__label">Extra skips</span>
+        <span class="whatif-stat__val" id="sliderK">0</span>
+      </div>
+      <div class="whatif-stat">
+        <span class="whatif-stat__label">Best possible final %</span>
+        <span class="whatif-stat__val" id="sliderBest">--</span>
+      </div>
+      <div class="whatif-stat">
+        <span class="whatif-stat__label">Current % after skip</span>
+        <span class="whatif-stat__val" id="sliderCurrent">--</span>
+      </div>
+      <div class="whatif-stat">
+        <span class="whatif-stat__label">Projected status</span>
+        <span class="whatif-stat__val status-text" id="sliderStatus">--</span>
+      </div>
+    </div>
+  </section>
+</div><!-- /detail-grid -->
+
+<!-- Trend chart -->
+<section class="glass-card detail-section mt-1" aria-label="Attendance trend">
+  <h2 class="section-title">Attendance trend</h2>
+  {% if trend_labels_json != "[]" %}
+  <canvas id="trendChart" height="80" aria-label="Attendance trend chart"></canvas>
+  {% else %}
+  <p class="muted-text">No snapshots yet. Update attendance above to see your trend.</p>
+  {% endif %}
+</section>
+
+<!-- Risk gauge -->
+<section class="glass-card detail-section mt-1" aria-label="Attendance risk">
+  <h2 class="section-title">Completion risk</h2>
+  <div class="risk-row">
+    <div class="risk-gauge-wrap">
+      <canvas id="riskChart" width="200" height="200" aria-label="Risk gauge"></canvas>
+    </div>
+    <div class="risk-info">
+      <p class="risk-prob">
+        You have a <strong>{{ risk.probability|floatformat:0 }}%</strong> chance of finishing at
+        or above {{ active_thr }}% at your current pace.
+      </p>
+      <p class="risk-label risk-label--{{ risk.label|lower }}">{{ risk.label }} risk</p>
+
+      <!-- Explainer collapsible (great for FDS viva) -->
+      <details class="explainer">
+        <summary class="explainer__toggle">How is this calculated?</summary>
+        <div class="explainer__body">
+          <p>Your <strong>habit rate</strong> is estimated as
+            <code>p = (A + 1) / (H + 2)</code> (Laplace smoothing), giving
+            <code>p = {{ A|add:1 }} / {{ H|add:2 }} &asymp; {{ risk.probability|floatformat:2 }}</code>.</p>
+          <p>The remaining <strong>R = {{ att.r }}</strong> classes are modelled as
+            <strong>Binomial({{ att.r }}, p)</strong>. The probability of attending
+            at least <strong>{{ att.must }}</strong> of them is computed exactly using
+            the binomial PMF.</p>
+          <p>The histogram below shows 5 000 Monte Carlo runs using the same habit
+            rate, seeded for reproducibility.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+  <!-- MC histogram -->
+  <canvas id="histChart" height="100" aria-label="Monte Carlo histogram" class="mt-1"></canvas>
+</section>
+
+<!-- Marks / grade table -->
+<section class="glass-card detail-section mt-1" aria-label="Grade table">
+  <h2 class="section-title">Grade predictor</h2>
+  <!-- Internal marks form -->
+  <form method="post" action="{% url 'core:internal_marks' subject.pk %}" class="inline-marks-form" id="internalForm">
+    {% csrf_token %}
+    <label for="{{ internal_form.internal_marks.id_for_label }}">Internal marks (out of 60)</label>
+    {{ internal_form.internal_marks }}
+    <button type="submit" class="btn btn-secondary btn-sm" id="btn-save-internal">Save</button>
+  </form>
+
+  {% if grade_table %}
+  <table class="grade-table" aria-label="Grade table">
+    <thead>
+      <tr>
+        <th>Grade</th>
+        <th>Min. total</th>
+        <th>External needed (/ 75)</th>
+        <th>Converts to (/ 40)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in grade_table.rows %}
+      <tr class="grade-row grade-row--{{ row.status }} {% if row.highlighted %}grade-row--highlighted{% endif %}"
+          id="grade-row-{{ row.grade }}">
+        <td><strong>{{ row.grade }}</strong></td>
+        <td>{{ row.min_total }}</td>
+        <td>{{ row.display }}</td>
+        <td>{% if row.converted_display %}{{ row.converted_display }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted-text">Enter your internal marks above to see the grade table.</p>
+  {% endif %}
+</section>
+
+<!-- Precomputed slider data (JS reads from here, never recalculates) -->
+{{ slider_data_json|json_script:"sliderData" }}
+{{ trend_labels_json|json_script:"trendLabels" }}
+{{ trend_pct_json|json_script:"trendPct" }}
+{{ risk.mc_histogram|join:","|default:""|json_script:"mcHistogram" }}
+{{ risk.mc_bins|join:","|default:""|json_script:"mcBins" }}
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  // ── What-if slider (server-precomputed values) ─────────────────────────
+  var sliderData = JSON.parse(document.getElementById("sliderData").textContent);
+  var slider = document.getElementById("whatIfSlider");
+
+  function updateSlider(k) {
+    var entry = sliderData[k] || sliderData[sliderData.length - 1];
+    document.getElementById("sliderK").textContent = k;
+    document.getElementById("sliderBest").textContent =
+      entry.best_possible_pct !== null ? entry.best_possible_pct.toFixed(1) + "%" : "--";
+    document.getElementById("sliderCurrent").textContent =
+      entry.projected_pct !== null ? entry.projected_pct.toFixed(1) + "%" : "--";
+    var statusEl = document.getElementById("sliderStatus");
+    statusEl.textContent = entry.projected_status.replace("_", " ");
+    statusEl.className = "whatif-stat__val status-text status-text--" + entry.projected_status;
+  }
+
+  if (slider) {
+    slider.addEventListener("input", function() { updateSlider(parseInt(this.value)); });
+    updateSlider(0);
+  }
+
+  // ── Trend chart ────────────────────────────────────────────────────────
+  var trendCanvas = document.getElementById("trendChart");
+  if (trendCanvas) {
+    var labels = JSON.parse(document.getElementById("trendLabels").textContent);
+    var pcts   = JSON.parse(document.getElementById("trendPct").textContent);
+    var thr    = {{ active_thr }};
+
+    new Chart(trendCanvas, {
+      type: "line",
+      data: {
+        labels: labels,
+        datasets: [{
+          label: "Attendance %",
+          data: pcts,
+          borderColor: "#6366F1",
+          backgroundColor: "rgba(99,102,241,0.12)",
+          tension: 0.35,
+          fill: true,
+          pointRadius: 4,
+          pointBackgroundColor: "#6366F1",
+        }]
+      },
+      options: {
+        animation: { duration: 600 },
+        plugins: {
+          legend: { display: false },
+          annotation: {
+            annotations: {
+              threshold: {
+                type: "line",
+                yMin: thr, yMax: thr,
+                borderColor: "#F43F5E",
+                borderWidth: 1.5,
+                borderDash: [5, 4],
+                label: {
+                  content: thr + "% threshold",
+                  display: true,
+                  position: "end",
+                  color: "#F43F5E",
+                  font: { size: 11 }
+                }
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            min: 0, max: 100,
+            ticks: { color: "#8A93B5" },
+            grid: { color: "rgba(99,102,241,0.08)" }
+          },
+          x: { ticks: { color: "#8A93B5" }, grid: { display: false } }
+        }
+      }
+    });
+  }
+
+  // ── Risk donut gauge ───────────────────────────────────────────────────
+  var riskCanvas = document.getElementById("riskChart");
+  if (riskCanvas) {
+    var prob = {{ risk.probability|floatformat:4 }};
+    var pct  = Math.round(prob * 100);
+    var color = pct >= 80 ? "#34D399" : pct >= 50 ? "#FBBF24" : "#F43F5E";
+    new Chart(riskCanvas, {
+      type: "doughnut",
+      data: {
+        datasets: [{
+          data: [pct, 100 - pct],
+          backgroundColor: [color, "rgba(255,255,255,0.05)"],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        cutout: "72%",
+        animation: { duration: 700 },
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false },
+        }
+      },
+      plugins: [{
+        id: "centerText",
+        afterDraw: function(chart) {
+          var ctx = chart.ctx;
+          var cx = chart.chartArea.left + chart.chartArea.width / 2;
+          var cy = chart.chartArea.top + chart.chartArea.height / 2;
+          ctx.save();
+          ctx.font = "bold 28px JetBrains Mono, monospace";
+          ctx.fillStyle = color;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(pct + "%", cx, cy);
+          ctx.restore();
+        }
+      }]
+    });
+  }
+
+  // ── MC Histogram ───────────────────────────────────────────────────────
+  var histCanvas = document.getElementById("histChart");
+  if (histCanvas) {
+    var mcH  = JSON.parse(document.getElementById("mcHistogram").textContent);
+    var mcB  = JSON.parse(document.getElementById("mcBins").textContent);
+
+    // mcH and mcB may be comma-separated strings if Django rendered them as such
+    if (typeof mcH === "string") mcH = mcH.split(",").map(Number);
+    if (typeof mcB === "string") mcB = mcB.split(",").map(Number);
+
+    var midpoints = [];
+    for (var i = 0; i < mcH.length; i++) {
+      midpoints.push(((mcB[i] + mcB[i+1]) / 2).toFixed(1));
+    }
+    new Chart(histCanvas, {
+      type: "bar",
+      data: {
+        labels: midpoints,
+        datasets: [{
+          label: "Simulated runs",
+          data: mcH,
+          backgroundColor: "rgba(99,102,241,0.5)",
+          borderColor: "#6366F1",
+          borderWidth: 1,
+        }]
+      },
+      options: {
+        animation: { duration: 600 },
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            title: { display: true, text: "Final attendance %", color: "#8A93B5" },
+            ticks: { color: "#8A93B5", maxTicksLimit: 10 },
+            grid: { display: false }
+          },
+          y: { ticks: { color: "#8A93B5" }, grid: { color: "rgba(99,102,241,0.06)" } }
+        }
+      },
+      plugins: [{
+        id: "mcThresholdLine",
+        afterDraw: function(chart) {
+          var thr = {{ active_thr }};
+          var midpointsNum = midpoints.map(Number);
+          var xScale = chart.scales.x;
+          var yScale = chart.scales.y;
+          var xPixel = null;
+          for (var i = 0; i < midpointsNum.length - 1; i++) {
+            if (midpointsNum[i] <= thr && thr <= midpointsNum[i + 1]) {
+              var frac = (thr - midpointsNum[i]) / (midpointsNum[i + 1] - midpointsNum[i]);
+              xPixel = xScale.getPixelForTick(i) + frac * (xScale.getPixelForTick(i + 1) - xScale.getPixelForTick(i));
+              break;
+            }
+          }
+          if (xPixel === null) {
+            if (thr < midpointsNum[0]) xPixel = xScale.left;
+            else xPixel = xScale.right;
+          }
+          var ctx = chart.ctx;
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = "#F43F5E";
+          ctx.lineWidth = 2;
+          ctx.moveTo(xPixel, yScale.top);
+          ctx.lineTo(xPixel, yScale.bottom);
+          ctx.stroke();
+
+          ctx.fillStyle = "#F43F5E";
+          ctx.font = "bold 11px JetBrains Mono, monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(thr + "% threshold", xPixel, yScale.top - 6);
+          ctx.restore();
+        }
+      }]
+    });
+  }
+
+  // ── Number steppers ────────────────────────────────────────────────────
+  document.querySelectorAll(".stepper__btn").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      var name = this.dataset.target;
+      var inp  = document.querySelector("[name='" + name + "']");
+      if (!inp) return;
+      var val = parseInt(inp.value) || 0;
+      if (this.classList.contains("stepper__btn--inc")) {
+        inp.value = val + 1;
+      } else {
+        inp.value = Math.max(0, val - 1);
+      }
+    });
+  });
+
+  // ── Progress bar animation ─────────────────────────────────────────────
+  document.querySelectorAll(".js-fill").forEach(function(el) {
+    var target = parseFloat(el.dataset.target) || 0;
+    el.style.width = "0%";
+    setTimeout(function() {
+      el.style.transition = "width 0.8s ease";
+      el.style.width = Math.min(target, 100) + "%";
+    }, 100);
+  });
+
+})();
+</script>
+{% endblock %}

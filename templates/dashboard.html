@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+  <div class="dashboard-header__left">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-sub">Hi {{ user.email }} &mdash; here's your attendance at a glance.</p>
+  </div>
+  <div class="dashboard-header__right">
+    <!-- Medical mode toggle pill -->
+    <form method="post" action="{% url 'core:toggle_medical' %}" class="toggle-form" id="medicalToggleForm">
+      {% csrf_token %}
+      <button type="submit"
+              class="toggle-pill {% if medical_mode %}toggle-pill--medical{% endif %}"
+              id="medicalToggleBtn"
+              title="Toggle between 75% normal and 65% medical threshold">
+        <span class="toggle-pill__label">{% if medical_mode %}65% Medical{% else %}75% Normal{% endif %}</span>
+        <span class="toggle-pill__sub">{% if medical_mode %}Normal mode available{% else %}Medical mode available{% endif %}</span>
+      </button>
+    </form>
+    <a href="{% url 'core:calendar_setup' %}" class="btn btn-ghost" id="btn-calendar-setup" style="border: 1px solid var(--border);">
+      📅 {% if calendar %}Edit Calendar{% else %}Setup Calendar{% endif %}
+    </a>
+    <a href="{% url 'core:subject_add' %}" class="btn btn-primary" id="btn-add-subject">+ Add Subject</a>
+  </div>
+</div>
+
+{% if calendar %}
+<div class="glass-card" style="margin-bottom: 1.5rem; padding: 0.85rem 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; border-left: 3px solid var(--accent); font-size: 0.9rem;">
+  <div>
+    <span style="color: var(--accent); font-weight: 600;">🗓️ Semester Calendar Active:</span>
+    <span style="color: var(--text); margin-left: 0.25rem;">{{ calendar.start_date|date:"d M Y" }} &ndash; {{ calendar.last_working_day|date:"d M Y" }}</span>
+    <span style="color: var(--muted); margin-left: 0.5rem;">({{ calendar.get_mode_display }} &bull; {% if calendar.weekends_off %}Weekends off{% else %}Weekends counted{% endif %})</span>
+  </div>
+  <a href="{% url 'core:calendar_setup' %}" style="color: var(--primary); font-size: 0.85rem; font-weight: 500;">Manage Schedule &rarr;</a>
+</div>
+{% else %}
+<div class="glass-card" style="margin-bottom: 1.5rem; padding: 0.85rem 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; border-left: 3px solid var(--primary); font-size: 0.9rem;">
+  <div>
+    <span style="color: var(--primary); font-weight: 600;">✨ Automatic Class Counting:</span>
+    <span style="color: var(--muted); margin-left: 0.25rem;">Set up your semester calendar and timetable to compute held classes automatically.</span>
+  </div>
+  <a href="{% url 'core:calendar_setup' %}" class="btn btn-primary" style="padding: 0.35rem 0.85rem; font-size: 0.85rem;">Set Up Calendar</a>
+</div>
+{% endif %}
+
+<!-- Safe skip days card -->
+<div class="glass-card" style="margin-bottom: 1.5rem; padding: 1.25rem 1.5rem;" id="safe-skip-card">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+    <div>
+      <h2 style="font-size: 1.15rem; font-weight: 600; color: var(--text); margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+        <span>🏖️</span> Safe Skip Days
+        <span class="badge" style="background: rgba(45,212,191,0.15); color: var(--accent); font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 999px;">
+          {{ active_thr }}% Target
+        </span>
+      </h2>
+      <p style="color: var(--muted); font-size: 0.85rem; margin-top: 0.2rem; margin-bottom: 0;">
+        Ranked opportunities to take a break without putting any subject below attendance threshold.
+      </p>
+    </div>
+    {% if skip_plan and skip_plan.plan %}
+    <span style="font-size: 0.85rem; color: var(--accent); font-weight: 500;">
+      {{ skip_plan.total_days_planned }} day{{ skip_plan.total_days_planned|pluralize }} planned &bull; {{ skip_plan.total_periods_planned }} period{{ skip_plan.total_periods_planned|pluralize }}
+    </span>
+    {% endif %}
+  </div>
+
+  {% if not calendar %}
+  <p style="color: var(--muted); font-size: 0.9rem; margin: 0;">
+    Set up your academic calendar and timetable slots to view safe skip day recommendations.
+  </p>
+  {% elif not cards %}
+  <p style="color: var(--muted); font-size: 0.9rem; margin: 0;">
+    Add subjects with timetable slots to view safe skip day recommendations.
+  </p>
+  {% elif skip_plan and skip_plan.feasible_days %}
+  <!-- Top 5 ranked days -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.85rem; margin-bottom: 1rem;">
+    {% for day in skip_plan.top_feasible %}
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.85rem 1rem; display: flex; flex-direction: column; justify-content: space-between; gap: 0.4rem;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem;">
+        <div>
+          <span style="font-size: 0.95rem; font-weight: 600; color: var(--text);">{{ day.date|date:"D, d M" }}</span>
+          <span style="display: block; font-size: 0.8rem; color: var(--muted);">{{ day.weekday_name }}</span>
+        </div>
+        <span class="badge" style="font-size: 0.7rem; padding: 0.15rem 0.45rem; border-radius: 999px; {% if day.bridge_score > 0 %}background: rgba(45,212,191,0.15); color: var(--accent); border: 1px solid rgba(45,212,191,0.3);{% else %}background: rgba(255,255,255,0.05); color: var(--muted); border: 1px solid var(--border);{% endif %}">
+          {{ day.label }}
+        </span>
+      </div>
+      <div style="font-size: 0.8rem; color: var(--muted); display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 0.35rem; margin-top: 0.2rem;">
+        <span>{{ day.total_periods }} period{{ day.total_periods|pluralize }} skipped</span>
+        {% if day.bridge_score > 0 %}<span style="color: var(--accent); font-size: 0.75rem;">⭐ Bridge</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Expander for full plan -->
+  <details style="background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem 1rem;">
+    <summary style="cursor: pointer; font-weight: 500; font-size: 0.875rem; color: var(--primary); user-select: none;">
+      Show full plan & subject budgets left ({{ skip_plan.total_days_planned }} planned days)
+    </summary>
+    <div style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 0.75rem;">
+      <!-- Budget left per subject -->
+      <h4 style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.5rem;">
+        Skip Budget Left Per Subject
+      </h4>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem;">
+        {% for row in skip_plan.subject_budget_rows %}
+        <div style="background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.4rem 0.75rem; font-size: 0.8rem;">
+          <span style="font-weight: 600; color: var(--text);">{{ row.name }}:</span>
+          <span style="color: var(--accent); margin-left: 0.25rem;">{{ row.left_budget }} left</span>
+          <span style="color: var(--muted); font-size: 0.75rem;">({{ row.used_budget }}/{{ row.initial_budget }} used)</span>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Plan day-by-day table -->
+      <h4 style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.5rem;">
+        Greedy Skip Schedule
+      </h4>
+      {% if skip_plan.plan %}
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border); color: var(--muted);">
+              <th style="padding: 0.5rem;">Date</th>
+              <th style="padding: 0.5rem;">Weekday</th>
+              <th style="padding: 0.5rem;">Type</th>
+              <th style="padding: 0.5rem;">Periods</th>
+              <th style="padding: 0.5rem;">Subjects Skipped</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in skip_plan.plan %}
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+              <td style="padding: 0.5rem; font-weight: 500; color: var(--text);">{{ d.date|date:"D, d M Y" }}</td>
+              <td style="padding: 0.5rem; color: var(--muted);">{{ d.weekday_name }}</td>
+              <td style="padding: 0.5rem;"><span class="badge" style="font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 999px;">{{ d.label }}</span></td>
+              <td style="padding: 0.5rem; color: var(--text);">{{ d.total_periods }}</td>
+              <td style="padding: 0.5rem; color: var(--muted);">
+                {% for sub in d.subject_breakdown %}
+                  {{ sub.name }} ({{ sub.periods }}){% if not forloop.last %}, {% endif %}
+                {% endfor %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p style="color: var(--muted); font-size: 0.85rem; margin: 0;">No multi-day plan could be formed with current budgets.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% else %}
+  <p style="color: var(--muted); font-size: 0.9rem; margin: 0;">
+    No safe skip days feasible at {{ active_thr }}% threshold. All scheduled classes require attendance to meet your goal.
+  </p>
+  {% endif %}
+</div>
+
+<!-- Summary strip -->
+<div class="summary-strip" role="region" aria-label="Attendance summary">
+  <div class="summary-pill summary-pill--safe">
+    <span class="summary-pill__icon" aria-hidden="true">&#10003;</span>
+    <span class="summary-pill__count">{{ status_counts.safe }}</span>
+    <span class="summary-pill__label">Safe</span>
+  </div>
+  <div class="summary-pill summary-pill--warning">
+    <span class="summary-pill__icon" aria-hidden="true">&#9888;</span>
+    <span class="summary-pill__count">{{ status_counts.warning }}</span>
+    <span class="summary-pill__label">Warning</span>
+  </div>
+  <div class="summary-pill summary-pill--detention">
+    <span class="summary-pill__icon" aria-hidden="true">&#10007;</span>
+    <span class="summary-pill__count">{{ status_counts.detention_zone }}</span>
+    <span class="summary-pill__label">Detention</span>
+  </div>
+</div>
+
+<!-- Subject cards grid -->
+{% if cards %}
+<div class="cards-grid" id="cardsGrid">
+  {% for card in cards %}
+  {% if medical_mode %}{% with data=card.data_65 %}
+  {% include "partials/_subject_card.html" with card=card data=data thr=65 %}
+  {% endwith %}{% else %}{% with data=card.data_75 %}
+  {% include "partials/_subject_card.html" with card=card data=data thr=75 %}
+  {% endwith %}{% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<!-- Empty state -->
+<div class="empty-state" id="emptyState">
+  <div class="empty-state__icon" aria-hidden="true">&#128218;</div>
+  <h2 class="empty-state__title">No subjects yet</h2>
+  <p class="empty-state__text">Add your first subject to start tracking attendance and predicting grades.</p>
+  <a href="{% url 'core:subject_add' %}" class="btn btn-primary" id="btn-add-first">+ Add your first subject</a>
+</div>
+{% endif %}
+
+{{ cards_json|json_script:"cardsData" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Medical toggle via fetch (AJAX), fallback is the plain form POST above
+(function() {
+  var btn = document.getElementById("medicalToggleBtn");
+  var form = document.getElementById("medicalToggleForm");
+  if (!btn || !form) return;
+
+  btn.addEventListener("click", function(e) {
+    e.preventDefault();
+    fetch("{% url 'core:toggle_medical' %}", {
+      method: "POST",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value,
+      },
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      // Reload the page so server recomputes all card data for the new mode
+      window.location.reload();
+    })
+    .catch(function() {
+      // JS error: fall back to normal form submit
+      form.submit();
+    });
+  });
+})();
+
+// Stagger card animation
+(function() {
+  var cards = document.querySelectorAll(".subject-card");
+  cards.forEach(function(card, i) {
+    card.style.animationDelay = (i * 80) + "ms";
+    card.classList.add("card-enter");
+  });
+})();
+</script>
+{% endblock %}

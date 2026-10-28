@@ -1,0 +1,63 @@
+{% load static %}
+<div class="subject-card subject-card--{{ data.status }}" id="card-{{ card.pk }}">
+  <div class="card-header">
+    <h2 class="card-title">{{ card.name }}</h2>
+    <div class="card-menu" role="menu">
+      <a href="{% url 'core:subject_edit' card.pk %}" class="card-menu__item" title="Edit {{ card.name }}">
+        <span aria-hidden="true">&#9998;</span><span class="sr-only">Edit</span>
+      </a>
+      <form method="post" action="{% url 'core:subject_delete' card.pk %}" class="inline-form">
+        {% csrf_token %}
+        <button type="submit" class="card-menu__item card-menu__item--danger"
+                onclick="return confirm('Delete {{ card.name }}?')"
+                title="Delete {{ card.name }}">
+          <span aria-hidden="true">&#128465;</span><span class="sr-only">Delete</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Big percentage -->
+  <div class="card-pct-row">
+    <span class="card-pct js-pct" data-target="{{ data.current_pct|default:'0' }}">
+      {% if data.current_pct is not None %}{{ data.current_pct|floatformat:1 }}%{% else %}--{% endif %}
+    </span>
+    <span class="status-badge status-badge--{{ data.status }}" role="status">
+      {% if data.status == 'safe' %}&#10003; Safe
+      {% elif data.status == 'warning' %}&#9888; Warning
+      {% elif data.status == 'detention_zone' %}&#10007; Detention
+      {% else %}No classes yet{% endif %}
+    </span>
+  </div>
+
+  <!-- Linear progress bar with threshold marker -->
+  <div class="progress-bar-wrap" aria-label="{{ data.current_pct|default:0|floatformat:0 }}% attended">
+    <div class="progress-bar">
+      <div class="progress-bar__fill js-fill" style="width: 0%"
+           data-target="{{ data.current_pct|default:'0'|floatformat:0 }}"></div>
+    </div>
+    <div class="progress-bar__marker" style="left: {{ thr }}%"
+         title="{{ thr }}% threshold" aria-label="{{ thr }}% threshold line"></div>
+    <span class="progress-bar__marker-label" style="left: {{ thr }}%">{{ thr }}%</span>
+  </div>
+
+  <!-- Stats row -->
+  <div class="card-stats">
+    <div class="stat">
+      <span class="stat__value">{{ data.skips }}</span>
+      <span class="stat__label">Can skip</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value">{{ data.must }}</span>
+      <span class="stat__label">Must attend</span>
+    </div>
+    <div class="stat">
+      <span class="stat__value">{{ card.attended }}/{{ card.held }}</span>
+      <span class="stat__label">Attended/Held</span>
+    </div>
+  </div>
+
+  <a href="{% url 'core:subject_detail' card.pk %}" class="btn btn-secondary btn-full mt-1">
+    View details
+  </a>
+</div>
